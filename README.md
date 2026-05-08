@@ -8,7 +8,7 @@ canonical source of truth for the canned scenarios:
 - **`warden-chaos-monkey`** — the CLI red-team runner. Iterates
   `catalog()`, POSTs each attack to the proxy, classifies the verdict
   against the `Expected` field on each `Attack`.
-- **`warden-console`** — the Week-5 `/demo/fire` page (in the
+- **`warden-console`** — the `/demo/fire` page (in the
   `vanteguardlabs` demo experience). Currently has its own
   HIL-pending-shaped scenarios; routing through the catalog is a
   future refactor.
