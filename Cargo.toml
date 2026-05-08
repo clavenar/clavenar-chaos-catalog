@@ -1,0 +1,26 @@
+[package]
+name = "warden-chaos-catalog"
+version = "0.1.0"
+edition = "2024"
+description = "Pure-data attack catalog for Agent Warden's red-team and demo flows. Lifted from warden-chaos-monkey so warden-chaos-monkey, warden-console (/demo/fire), and any future caller can fire the same scenarios from one canonical source."
+license = "Apache-2.0"
+repository = "https://github.com/vanteguardlabs/warden-chaos-catalog"
+readme = "README.md"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Wire shape: every attack payload is an MCP-style JSON RPC body.
+serde_json = "1"
+# Wall-clock-stamped header builders (the attestation rogue header
+# carries an `expires_at` claim, the rogue actor token carries `exp`,
+# etc.). Built fresh per fire so a long catalog run doesn't ship a
+# stale claim.
+chrono = "0.4"
+# Base64 for the JWT-style header values (`X-Warden-Attestation`,
+# `X-Warden-Actor-Token`). No JWT crypto here — the catalog ships
+# UNSIGNED tokens on purpose; the proxy / identity-service rejects
+# them as invalid signatures, which is the verdict the attacks test.
+base64 = "0.22"
