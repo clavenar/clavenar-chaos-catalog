@@ -16,19 +16,24 @@ canonical source of truth for the canned scenarios:
 ## What's in here
 
 ```rust
-pub use lib::{
-    Attack,                    // pure data; Clone+Debug
-    Category,                  // 8 variants: Denylist/Injection/Velocity/...
-    Expected,                  // Allow | Deny { reasons } | BusinessHoursConditional
-    Mode,                      // Single | Burst { count } | SingleWithHil(...)
-    HilSideAction,             // Deny | DoNothing
-    catalog,                   // -> Vec<Attack> (13 today)
+use warden_chaos_catalog::{
+    Attack,         // pure data; Clone+Debug. payload_builder and
+                    // headers_builder are private — go through
+                    // build_payload(request_id) and build_headers()
+    Category,       // 8 variants: Denylist, Injection, Velocity,
+                    // BusinessHours, Control, Hil, Attestation, Identity
+    Expected,       // Allow | Deny { reason_keywords } | BusinessHoursConditional
+    Mode,           // Single | Burst { count } | SingleWithHil(HilSideAction)
+    HilSideAction,  // Deny | DoNothing
+    catalog,        // -> Vec<Attack> (13 today)
 };
 ```
 
 Every payload + header builder is a plain `fn` pointer (no captured
 state). Time-dependent values (attestation `expires_at`, JWT `exp`)
-are stamped at fire-time, not at catalog construction.
+are stamped at fire-time by the `build_headers()` accessor rather
+than at catalog construction, so a long catalog run doesn't ship
+stale claims.
 
 ## What's NOT in here
 
@@ -52,8 +57,9 @@ every consumer (today: just `warden-chaos-monkey`; tomorrow probably
 ## Run
 
 ```bash
-cargo build --release
+cargo build
 cargo test
+cargo clippy --all-targets -- -D warnings
 ```
 
 No binary — this is a library crate.

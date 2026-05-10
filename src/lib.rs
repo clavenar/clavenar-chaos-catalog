@@ -115,9 +115,10 @@ pub struct Attack {
     /// wall-clock claims (`X-Warden-Attestation`'s `expires_at`,
     /// actor-token `iat`/`exp`) reflect the time of firing — a long
     /// catalog run otherwise ships stale claims that get rejected for
-    /// the wrong reason.
+    /// the wrong reason. Private so consumers go through
+    /// `build_headers()`, matching `payload_builder` / `build_payload`.
     #[allow(clippy::type_complexity)]
-    pub headers_builder: Option<fn() -> Vec<(&'static str, String)>>,
+    headers_builder: Option<fn() -> Vec<(&'static str, String)>>,
 }
 
 impl Attack {
