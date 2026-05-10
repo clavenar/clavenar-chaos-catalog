@@ -114,3 +114,25 @@ pub(crate) fn unfederated_actor_token_header() -> Vec<(&'static str, String)> {
     });
     vec![("x-warden-actor-token", craft_unsigned_jwt(&claims))]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn craft_unsigned_jwt_produces_three_segments() {
+        // The proxy / identity decode the JOSE-compact form by
+        // splitting on '.' and base64-decoding the middle segment.
+        // A future change that emits 2 or 4 segments would silently
+        // break the rejection paths the catalog probes — the attack-
+        // level tests would still see a header attached but identity
+        // would 400 on bad-shape instead of reaching the expected
+        // a2a_redeem_failed/grant_expired branches.
+        let token = craft_unsigned_jwt(&json!({"hello": "world"}));
+        let segments: Vec<&str> = token.split('.').collect();
+        assert_eq!(segments.len(), 3);
+        for seg in &segments {
+            assert!(!seg.is_empty(), "every JOSE segment must be non-empty");
+        }
+    }
+}

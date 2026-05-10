@@ -451,15 +451,22 @@ mod tests {
     }
 
     #[test]
-    fn identity_attacks_run_before_velocity_breaker() {
-        // Ordering invariant: velocity_breaker burns the agent's per-60s
-        // budget, so any subsequent attack 403's on velocity instead
-        // of its own deny reason. All three §10 identity scenarios
-        // must precede it.
+    fn every_non_velocity_attack_precedes_velocity_breaker() {
+        // velocity_breaker burns the agent's per-60s budget, so any
+        // attack ordered after it would 403 on velocity instead of
+        // its own deny reason — collapsing all the per-rule diagnoses
+        // into one false-positive bucket. Pinning the global ordering
+        // catches a drift on a future attack add without needing a
+        // bespoke test per category (HIL, identity, attestation, etc.).
         let ids: Vec<&str> = catalog().iter().map(|a| a.id).collect();
-        let velocity_pos = ids.iter().position(|&id| id == "velocity_breaker").unwrap();
-        for id in ["stolen_svid_replay", "expired_grant", "cross_tenant_unfederated"] {
-            let pos = ids.iter().position(|&i| i == id).unwrap();
+        let velocity_pos = ids
+            .iter()
+            .position(|&id| id == "velocity_breaker")
+            .expect("velocity_breaker is in the catalog");
+        for (pos, id) in ids.iter().enumerate() {
+            if *id == "velocity_breaker" {
+                continue;
+            }
             assert!(pos < velocity_pos, "{id} must precede velocity_breaker");
         }
     }
@@ -546,19 +553,6 @@ mod tests {
     }
 
     #[test]
-    fn hil_attacks_run_before_velocity() {
-        // Velocity_breaker burns the agent's per-60s budget, so any
-        // wire_transfer attempted after it would 403 with a velocity
-        // reason instead of the HIL outcome we're testing.
-        let ids: Vec<&str> = catalog().iter().map(|a| a.id).collect();
-        let velocity_pos = ids.iter().position(|&id| id == "velocity_breaker").unwrap();
-        for hil_id in ["hil_denied", "hil_expired"] {
-            let pos = ids.iter().position(|&id| id == hil_id).unwrap();
-            assert!(pos < velocity_pos, "{} must precede velocity_breaker", hil_id);
-        }
-    }
-
-    #[test]
     fn payloads_are_valid_jsonrpc() {
         for a in catalog() {
             let v = a.build_payload(1);
@@ -580,22 +574,6 @@ mod tests {
     fn velocity_attack_is_burst_mode() {
         let v = catalog().into_iter().find(|a| a.id == "velocity_breaker").unwrap();
         assert!(matches!(v.mode, Mode::Burst { count } if count > 100));
-    }
-
-    #[test]
-    fn unattested_binary_runs_before_velocity_breaker() {
-        // Same ordering invariant as `hil_attacks_run_before_velocity`.
-        // The chaos suite's velocity_breaker burns the agent's per-60s
-        // budget, so any wire_transfer fired afterward would 403 with
-        // a velocity reason instead of the attestation deny we're
-        // testing.
-        let ids: Vec<&str> = catalog().iter().map(|a| a.id).collect();
-        let velocity_pos = ids.iter().position(|&id| id == "velocity_breaker").unwrap();
-        let pos = ids.iter().position(|&id| id == "unattested_binary").unwrap();
-        assert!(
-            pos < velocity_pos,
-            "unattested_binary must precede velocity_breaker",
-        );
     }
 
     #[test]
@@ -638,19 +616,20 @@ mod tests {
         assert!(claim["expires_at"].is_string());
     }
 
+    /// Header-attaching attacks pinned in one place, used as the
+    /// expected set by both the negative test (`other_attacks_…`)
+    /// and the positive exhaustiveness test below.
+    const HEADER_CARRIERS: &[&str] = &[
+        "unattested_binary",
+        "stolen_svid_replay",
+        "expired_grant",
+        "cross_tenant_unfederated",
+    ];
+
     #[test]
     fn other_attacks_do_not_attach_extra_headers() {
-        // Sanity: only attacks that explicitly probe a header-driven
-        // path should ship one. Updated with the §10 identity scenarios
-        // that each carry a single specific header.
-        let header_carriers = [
-            "unattested_binary",
-            "stolen_svid_replay",
-            "expired_grant",
-            "cross_tenant_unfederated",
-        ];
         for a in catalog() {
-            if header_carriers.contains(&a.id) {
+            if HEADER_CARRIERS.contains(&a.id) {
                 continue;
             }
             assert!(
@@ -659,5 +638,51 @@ mod tests {
                 a.id,
             );
         }
+    }
+
+    #[test]
+    fn header_carrier_set_is_exhaustive() {
+        // Positive companion to `other_attacks_do_not_attach_extra_headers`:
+        // every id in HEADER_CARRIERS must also actually attach a header.
+        // Catches the case where someone removes a `headers_builder:
+        // Some(...)` but forgets to update the carrier list — the
+        // negative test would still pass (no false attachment) but
+        // the catalog would have lost a probe.
+        for id in HEADER_CARRIERS {
+            let a = catalog().into_iter().find(|a| a.id == *id).unwrap();
+            assert!(
+                !a.build_headers().is_empty(),
+                "{id} listed as a header carrier but builds no headers",
+            );
+        }
+    }
+
+    #[test]
+    fn catalog_has_no_duplicate_ids() {
+        // Catches accidental copy-paste duplicates when a new attack
+        // reuses an existing id. The runner dispatches by id, so a
+        // collision silently makes one of the two unreachable.
+        let ids: Vec<&str> = catalog().iter().map(|a| a.id).collect();
+        let unique: std::collections::HashSet<&str> = ids.iter().copied().collect();
+        assert_eq!(unique.len(), ids.len(), "duplicate attack id in catalog");
+    }
+
+    #[test]
+    fn category_as_str_round_trip_is_injective() {
+        // Categories are surfaced as strings through the runner's
+        // `--category` filter; a string collision would silently
+        // merge two categories into one filter target.
+        let strings = [
+            Category::Denylist.as_str(),
+            Category::Injection.as_str(),
+            Category::Velocity.as_str(),
+            Category::BusinessHours.as_str(),
+            Category::Control.as_str(),
+            Category::Hil.as_str(),
+            Category::Attestation.as_str(),
+            Category::Identity.as_str(),
+        ];
+        let unique: std::collections::HashSet<&str> = strings.iter().copied().collect();
+        assert_eq!(unique.len(), strings.len(), "category as_str collision");
     }
 }
