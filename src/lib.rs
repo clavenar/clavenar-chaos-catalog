@@ -17,42 +17,6 @@
 //! HTTP client, no NATS handle. Time-dependent header values (e.g. the
 //! attestation `expires_at` claim) are stamped at fire-time by the
 //! `headers_builder` `fn`, not at catalog construction.
-//!
-//! # Module layout
-//!
-//! Originally lived in `warden-chaos-monkey/src/attack.rs`; the file is
-//! now this crate's `lib.rs` verbatim plus this header comment.
-//!
-//! Original file header:
-//!
-// Attack catalog: the static set of red-team probes the runner fires at
-// the proxy, plus how to recognize each one's expected verdict.
-//
-// Rust idioms in this file (new vs. the five service-repo annotations):
-//
-//   * `enum Expected { Allow, Deny { reason_keywords: Vec<&'static str> }, ... }`
-//     — enum variants can carry named fields, not just positional ones.
-//     `Deny` here is essentially a struct-shaped variant. Pattern-match
-//     on it with `Expected::Deny { reason_keywords }` to bind the field.
-//   * `enum Mode { Single, Burst { count: u32 } }` — same pattern. The
-//     `Single` variant is payload-free (like a C enum); `Burst` carries
-//     data only when needed. This is how Rust models "this case has
-//     extra info" without resorting to a separate flag.
-//   * Function pointer type — `payload_builder: fn(u64) -> Value`. The
-//     field stores a pointer to a regular function. Calling it requires
-//     parens around the field access: `(self.payload_builder)(id)` —
-//     without the parens the compiler would treat `payload_builder` as
-//     a method name.
-//   * `matches!(v.mode, Mode::Burst { count } if count > 100)` — pattern
-//     match with a *match guard*. The `if` clause is an extra boolean
-//     test that runs only after the structural match succeeds. In a
-//     full `match` you'd write `Mode::Burst { count } if count > 100 =>
-//     ...`; `matches!` collapses it to a one-liner returning `bool`.
-//   * Iterator-and-find test idiom — `catalog().into_iter().find(|a|
-//     a.id == "x").unwrap()`. `into_iter()` consumes the `Vec` and yields
-//     owned items; `.find(...)` returns the first match as `Option<T>`;
-//     `.unwrap()` panics with a default message if not found (fine for
-//     tests where it should always exist).
 
 mod headers;
 
@@ -144,23 +108,14 @@ pub struct Attack {
     pub description: &'static str,
     pub expected: Expected,
     pub mode: Mode,
-    // Function pointer — stores any plain `fn(u64) -> Value` (no closures
-    // with captured state). Lets each attack supply its own payload
-    // factory while keeping `Attack` itself plain data (`Clone`/`Debug`).
+    // `fn` (not `Fn`) so Attack stays plain `Clone+Debug` — no captured
+    // state, no trait-object indirection.
     payload_builder: fn(u64) -> Value,
-    /// Optional builder for extra HTTP headers to attach when firing.
-    /// Built fresh per fire so values that depend on the wall clock
-    /// (e.g. `X-Warden-Attestation`'s `expires_at` field) reflect the
-    /// time of firing, not when the catalog was constructed. `None`
-    /// for attacks that don't need extra headers — the runner skips
-    /// the loop. Keeps `Attack` plain data: `fn` pointer means no
-    /// captured state, so the struct stays `Copy`-shaped (modulo
-    /// the `Vec` field types we already have on Mode etc.).
-    ///
-    /// The clippy `type_complexity` exemption is local rather than
-    /// extracted to a type alias because the shape is small and
-    /// reading "function returning a Vec of (header_name, value)
-    /// pairs" inline is clearer than chasing an alias definition.
+    /// Optional builder for extra HTTP headers. Called per fire so
+    /// wall-clock claims (`X-Warden-Attestation`'s `expires_at`,
+    /// actor-token `iat`/`exp`) reflect the time of firing — a long
+    /// catalog run otherwise ships stale claims that get rejected for
+    /// the wrong reason.
     #[allow(clippy::type_complexity)]
     pub headers_builder: Option<fn() -> Vec<(&'static str, String)>>,
 }
