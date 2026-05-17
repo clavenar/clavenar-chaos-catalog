@@ -20,12 +20,13 @@ use warden_chaos_catalog::{
     Attack,         // pure data; Clone+Debug. payload_builder and
                     // headers_builder are private — go through
                     // build_payload(request_id) and build_headers()
-    Category,       // 8 variants: Denylist, Injection, Velocity,
-                    // BusinessHours, Control, Hil, Attestation, Identity
+    Category,       // 9 variants: Denylist, Injection, Velocity,
+                    // BusinessHours, Control, Hil, Attestation, Identity,
+                    // SupplyChain
     Expected,       // Allow | Deny { reason_keywords } | BusinessHoursConditional
     Mode,           // Single | Burst { count } | SingleWithHil(HilSideAction)
     HilSideAction,  // Deny | DoNothing
-    catalog,        // -> Vec<Attack> (13 today)
+    catalog,        // -> Vec<Attack> (40 today)
 };
 ```
 
