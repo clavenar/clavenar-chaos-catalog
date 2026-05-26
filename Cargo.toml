@@ -24,3 +24,6 @@ chrono = "0.4"
 # UNSIGNED tokens on purpose; the proxy / identity-service rejects
 # them as invalid signatures, which is the verdict the attacks test.
 base64 = "0.22"
+
+[lints.rust]
+unreachable_pub = "warn"
