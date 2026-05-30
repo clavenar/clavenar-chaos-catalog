@@ -1395,7 +1395,7 @@ pub fn catalog() -> Vec<Attack> {
             },
             mode: Mode::Single,
             payload_builder: phi_export_unattested,
-            headers_builder: None,
+            headers_builder: Some(headers::absent_attestation_header),
         },
         Attack {
             id: "phi_email_external",
@@ -1490,7 +1490,7 @@ pub fn catalog() -> Vec<Attack> {
             },
             mode: Mode::Single,
             payload_builder: iam_grant_unattested,
-            headers_builder: None,
+            headers_builder: Some(headers::absent_attestation_header),
         },
         Attack {
             id: "infra_apply_prod_rollout",
@@ -1621,7 +1621,7 @@ pub fn catalog() -> Vec<Attack> {
             },
             mode: Mode::Single,
             payload_builder: transcript_bulk_unattested,
-            headers_builder: None,
+            headers_builder: Some(headers::absent_attestation_header),
         },
         Attack {
             id: "grade_external_email_no_consent",
@@ -1877,7 +1877,7 @@ pub fn catalog() -> Vec<Attack> {
             },
             mode: Mode::Single,
             payload_builder: cross_agent_impersonation,
-            headers_builder: None,
+            headers_builder: Some(headers::absent_attestation_header),
         },
 
         // ---- cybersecurity-ops ----
@@ -2447,6 +2447,13 @@ mod tests {
         "stolen_svid_replay",
         "expired_grant",
         "cross_tenant_unfederated",
+        // The template-deny `*_unattested` scenarios ship the
+        // absent-attestation marker so the auto-attesting dev proxy
+        // presents them as unattested.
+        "phi_egress_unattested",
+        "iam_grant_unattested_deny",
+        "transcript_bulk_unattested",
+        "cross_agent_impersonation",
     ];
 
     #[test]

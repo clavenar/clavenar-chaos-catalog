@@ -35,6 +35,19 @@ pub(crate) fn rogue_attestation_header() -> Vec<(&'static str, String)> {
     vec![("x-warden-attestation", encoded)]
 }
 
+/// The four template-deny `*_unattested` scenarios
+/// (`phi_egress_unattested`, `iam_grant_unattested_deny`,
+/// `transcript_bulk_unattested`, `cross_agent_impersonation`) need the
+/// proxy to present `input.attestation = null` so the template's
+/// unattested hard-deny fires. The dev proxy auto-attests every SVID via
+/// its attestation cache, so an absent `x-warden-attestation` header is
+/// not enough — this explicit marker forces the proxy's
+/// `resolve_attestation` to `None`. It can only tighten the verdict,
+/// never bypass.
+pub(crate) fn absent_attestation_header() -> Vec<(&'static str, String)> {
+    vec![("x-warden-attestation-absent", "1".to_string())]
+}
+
 /// JOSE-compact JWT helper. Hand-builds the header.payload.sig segments
 /// without signing — the chaos targets (proxy → identity /actor-token/
 /// redeem; proxy → grant parser) decode the payload but don't verify
