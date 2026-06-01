@@ -13,7 +13,7 @@
 use base64::Engine as _;
 use serde_json::json;
 
-/// Build the `X-Warden-Attestation` header value the
+/// Build the `X-Clavenar-Attestation` header value the
 /// `unattested_binary` attack ships. Stamps `issued_at`/`expires_at`
 /// at fire-time so the rego freshness check (`expires_at > ns_now`)
 /// passes — the attack proves the *measurement* is rejected, not
@@ -32,7 +32,7 @@ pub(crate) fn rogue_attestation_header() -> Vec<(&'static str, String)> {
     });
     let json = serde_json::to_string(&claims).expect("rogue claim serializes");
     let encoded = base64::engine::general_purpose::STANDARD.encode(json.as_bytes());
-    vec![("x-warden-attestation", encoded)]
+    vec![("x-clavenar-attestation", encoded)]
 }
 
 /// The four template-deny `*_unattested` scenarios
@@ -40,12 +40,12 @@ pub(crate) fn rogue_attestation_header() -> Vec<(&'static str, String)> {
 /// `transcript_bulk_unattested`, `cross_agent_impersonation`) need the
 /// proxy to present `input.attestation = null` so the template's
 /// unattested hard-deny fires. The dev proxy auto-attests every SVID via
-/// its attestation cache, so an absent `x-warden-attestation` header is
+/// its attestation cache, so an absent `x-clavenar-attestation` header is
 /// not enough — this explicit marker forces the proxy's
 /// `resolve_attestation` to `None`. It can only tighten the verdict,
 /// never bypass.
 pub(crate) fn absent_attestation_header() -> Vec<(&'static str, String)> {
-    vec![("x-warden-attestation-absent", "1".to_string())]
+    vec![("x-clavenar-attestation-absent", "1".to_string())]
 }
 
 /// JOSE-compact JWT helper. Hand-builds the header.payload.sig segments
@@ -71,9 +71,9 @@ pub(crate) fn craft_unsigned_jwt(claims: &serde_json::Value) -> String {
 pub(crate) fn stolen_actor_token_header() -> Vec<(&'static str, String)> {
     let now = chrono::Utc::now().timestamp();
     let claims = json!({
-        "iss": "spiffe://warden.local",
-        "sub": "spiffe://warden.local/tenant/acme/agent/x/instance/y",
-        "aud": "spiffe://warden.local",
+        "iss": "spiffe://clavenar.local",
+        "sub": "spiffe://clavenar.local/tenant/acme/agent/x/instance/y",
+        "aud": "spiffe://clavenar.local",
         "scope": ["call_tool"],
         "iat": now,
         // 30s ahead — fresh enough that the rejection isn't on `expired`.
@@ -82,20 +82,20 @@ pub(crate) fn stolen_actor_token_header() -> Vec<(&'static str, String)> {
         // can hit the jti_already_used path on the second fire. The
         // chaos catalog runs single-shot today, so we get a2a_unavailable
         // (unwired) or peer_bundle_unknown (wired with no federated
-        // peer named warden.local).
+        // peer named clavenar.local).
         "jti": "chaos-stolen-svid-fixed-jti",
     });
-    vec![("x-warden-actor-token", craft_unsigned_jwt(&claims))]
+    vec![("x-clavenar-actor-token", craft_unsigned_jwt(&claims))]
 }
 
 /// `expired_grant`: ship a delegation grant whose `exp` is firmly in
-/// the past. The proxy parses x-warden-grant, sees the past exp, and
-/// returns 403 grant_expired (per the warden-specs/TECH_SPEC.md#identity-service §10 posture: an
+/// the past. The proxy parses x-clavenar-grant, sees the past exp, and
+/// returns 403 grant_expired (per the clavenar-specs/TECH_SPEC.md#identity-service §10 posture: an
 /// expired grant means consent has lapsed, request must not proceed).
 pub(crate) fn expired_grant_header() -> Vec<(&'static str, String)> {
     let claims = json!({
-        "iss":  "warden-identity",
-        "sub":  "spiffe://warden.local/tenant/acme/agent/x",
+        "iss":  "clavenar-identity",
+        "sub":  "spiffe://clavenar.local/tenant/acme/agent/x",
         "act":  { "sub": "user:alice@acme.com" },
         "scope": ["mcp:read"],
         "iat":  100,
@@ -105,7 +105,7 @@ pub(crate) fn expired_grant_header() -> Vec<(&'static str, String)> {
         "exp":  200,
         "jti":  "chaos-expired-grant",
     });
-    vec![("x-warden-grant", craft_unsigned_jwt(&claims))]
+    vec![("x-clavenar-grant", craft_unsigned_jwt(&claims))]
 }
 
 /// `cross_tenant_unfederated`: ship an A2A token whose `iss` is a
@@ -119,13 +119,13 @@ pub(crate) fn unfederated_actor_token_header() -> Vec<(&'static str, String)> {
     let claims = json!({
         "iss":  "spiffe://attacker.local",
         "sub":  "spiffe://attacker.local/tenant/evil/agent/x/instance/y",
-        "aud":  "spiffe://warden.local",
+        "aud":  "spiffe://clavenar.local",
         "scope": ["call_tool"],
         "iat":  now,
         "exp":  now + 30,
         "jti":  "chaos-cross-tenant-unfederated",
     });
-    vec![("x-warden-actor-token", craft_unsigned_jwt(&claims))]
+    vec![("x-clavenar-actor-token", craft_unsigned_jwt(&claims))]
 }
 
 #[cfg(test)]
