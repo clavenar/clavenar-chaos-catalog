@@ -59,6 +59,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clavenar-chaos-catalog"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -269,15 +278,6 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
-
-[[package]]
-name = "warden-chaos-catalog"
-version = "0.1.0"
-dependencies = [
- "base64",
- "chrono",
- "serde_json",
-]
 
 [[package]]
 name = "wasm-bindgen"

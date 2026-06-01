@@ -1,14 +1,14 @@
-# warden-chaos-catalog
+# clavenar-chaos-catalog
 
-Pure-data attack catalog for Agent Warden's red-team and demo flows.
+Pure-data attack catalog for Clavenar's red-team and demo flows.
 
-Lifted out of `warden-chaos-monkey` so multiple callers can share one
+Lifted out of `clavenar-chaos-monkey` so multiple callers can share one
 canonical source of truth for the canned scenarios:
 
-- **`warden-chaos-monkey`** — the CLI red-team runner. Iterates
+- **`clavenar-chaos-monkey`** — the CLI red-team runner. Iterates
   `catalog()`, POSTs each attack to the proxy, classifies the verdict
   against the `Expected` field on each `Attack`.
-- **`warden-console`** — the `/demo/fire` page (in the
+- **`clavenar-console`** — the `/demo/fire` page (in the
   `vanteguardlabs` demo experience). Currently has its own
   HIL-pending-shaped scenarios; routing through the catalog is a
   future refactor.
@@ -16,7 +16,7 @@ canonical source of truth for the canned scenarios:
 ## What's in here
 
 ```rust
-use warden_chaos_catalog::{
+use clavenar_chaos_catalog::{
     Attack,         // pure data; Clone+Debug. payload_builder and
                     // headers_builder are private — go through
                     // build_payload(request_id) and build_headers()
@@ -39,21 +39,21 @@ stale claims.
 ## What's NOT in here
 
 - The runner — HTTP client, async dispatch, verdict classification.
-  Lives in `warden-chaos-monkey/src/runner.rs` and stays there.
+  Lives in `clavenar-chaos-monkey/src/runner.rs` and stays there.
 - The identity-scenario catalog — those scenarios reference
   `IdentityRunner` which carries an HTTP client; lifting them into a
   pure-data crate would force a runner trait we don't need yet.
-  Still in `warden-chaos-monkey/src/identity_attack.rs`.
+  Still in `clavenar-chaos-monkey/src/identity_attack.rs`.
 - The CLI / report formatter — binary concerns, stay in
-  `warden-chaos-monkey`.
+  `clavenar-chaos-monkey`.
 
 ## Versioning + breaking changes
 
-This crate is a workspace-internal data dependency for the warden tree.
+This crate is a workspace-internal data dependency for the clavenar tree.
 Adding new scenarios is non-breaking; renaming variants of `Category` /
 `Expected` / `Mode` IS breaking and triggers a coordinated bump on
-every consumer (today: just `warden-chaos-monkey`; tomorrow probably
-`warden-console`).
+every consumer (today: just `clavenar-chaos-monkey`; tomorrow probably
+`clavenar-console`).
 
 ## Run
 
