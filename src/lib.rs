@@ -146,6 +146,63 @@ impl Attack {
             None => Vec::new(),
         }
     }
+
+    /// Project this attack into a policy-engine `PolicyInput`-shaped
+    /// JSON value for an *offline, Rego-only* backtest (e.g. Policy
+    /// Exchange's install gate). Returns `None` for attacks whose
+    /// verdict does not come from Rego alone:
+    ///
+    /// - `Injection` / `SupplyChain` need clavenar-brain's signals.
+    /// - `Hil` needs a live HIL roundtrip.
+    /// - `Identity` is decided at the identity layer.
+    /// - `Velocity` / `Attestation` depend on per-request state
+    ///   (velocity counters, verified attestation claims) the catalog
+    ///   payload alone doesn't carry deterministically.
+    ///
+    /// The kept categories — `Denylist`, `BusinessHours`, `Control` —
+    /// are decidable from `tool_type` + `arguments` + a pinned
+    /// `current_time`, so the same attack yields the same Rego verdict
+    /// every run. Business-hours attacks pin an off-hours instant so
+    /// their deny rule fires; the rest pin a business-hours instant so
+    /// time-gated rules don't spuriously trip.
+    pub fn policy_input(&self) -> Option<Value> {
+        match self.category {
+            Category::Denylist | Category::BusinessHours | Category::Control => {}
+            _ => return None,
+        }
+        let payload = self.build_payload(0);
+        let params = payload.get("params")?;
+        let tool = params.get("name")?.as_str()?;
+        // 2026-04-29 is a Wednesday; 14:00Z is inside Mon-Fri 09-17 UTC
+        // business hours, 22:00Z is outside. Matches the pins the
+        // Policy Lab catalog corpus already uses.
+        let current_time = match self.category {
+            Category::BusinessHours => "2026-04-29T22:00:00Z",
+            _ => "2026-04-29T14:00:00Z",
+        };
+        let mut input = json!({
+            "tool_type": tool,
+            "agent_history": {"last_tool": null},
+            "intent_score": 0.05,
+            "current_time": current_time,
+            "agent_id": "catalog-bot",
+            "method": "tools/call",
+            "recent_request_count": 0,
+            "agent_kind": "mcp",
+        });
+        if let Some(args) = params.get("arguments") {
+            input["arguments"] = args.clone();
+        }
+        Some(input)
+    }
+}
+
+/// Every catalog attack's `PolicyInput` projection for the Rego-only
+/// backtest, skipping attacks that aren't Rego-decidable (see
+/// [`Attack::policy_input`]). The corpus the Policy Exchange install
+/// gate replays against each candidate pack policy.
+pub fn catalog_policy_inputs() -> Vec<Value> {
+    catalog().iter().filter_map(|a| a.policy_input()).collect()
 }
 
 fn mcp(method: &str, params: Value, id: u64) -> Value {
@@ -2203,6 +2260,49 @@ pub fn catalog() -> Vec<Attack> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn policy_inputs_cover_only_rego_decidable_attacks() {
+        let inputs = catalog_policy_inputs();
+        assert!(!inputs.is_empty(), "expected a non-empty Rego-only corpus");
+        // Every projected input has a tool_type and a pinned current_time.
+        for i in &inputs {
+            assert!(i.get("tool_type").and_then(|t| t.as_str()).is_some());
+            assert!(i.get("current_time").and_then(|t| t.as_str()).is_some());
+        }
+        // Brain/HIL/identity attacks are excluded.
+        for a in catalog() {
+            match a.category {
+                Category::Injection
+                | Category::SupplyChain
+                | Category::Hil
+                | Category::Identity
+                | Category::Velocity
+                | Category::Attestation => assert!(
+                    a.policy_input().is_none(),
+                    "{} ({:?}) must not be Rego-decidable",
+                    a.id,
+                    a.category
+                ),
+                Category::Denylist | Category::BusinessHours | Category::Control => assert!(
+                    a.policy_input().is_some(),
+                    "{} ({:?}) should project to a PolicyInput",
+                    a.id,
+                    a.category
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn business_hours_inputs_pin_off_hours() {
+        for a in catalog() {
+            if a.category == Category::BusinessHours {
+                let i = a.policy_input().expect("business-hours projects");
+                assert_eq!(i["current_time"], "2026-04-29T22:00:00Z");
+            }
+        }
+    }
 
     #[test]
     fn catalog_has_expected_attacks() {
