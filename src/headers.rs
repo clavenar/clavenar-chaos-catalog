@@ -108,6 +108,26 @@ pub(crate) fn expired_grant_header() -> Vec<(&'static str, String)> {
     vec![("x-clavenar-grant", craft_unsigned_jwt(&claims))]
 }
 
+/// `agent_cert_grant_replay`: ship a delegation grant that will never
+/// validate — modelling an agent retrying a revoked/forged grant. The
+/// proxy verifies grant signatures against identity's JWKS, so this
+/// unsigned token is rejected at the grant gate (`grant_invalid`); a
+/// past `exp` keeps it denied even where signature verification is off
+/// (`grant_expired`). Either reason is "the gate refused the grant,"
+/// which is what the certification gauntlet asserts.
+pub(crate) fn revoked_grant_header() -> Vec<(&'static str, String)> {
+    let claims = json!({
+        "iss":  "clavenar-identity",
+        "sub":  "spiffe://clavenar.local/tenant/acme/agent/x",
+        "act":  { "sub": "user:alice@acme.com" },
+        "scope": ["mcp:read"],
+        "iat":  100,
+        "exp":  200,
+        "jti":  "chaos-cert-revoked-grant",
+    });
+    vec![("x-clavenar-grant", craft_unsigned_jwt(&claims))]
+}
+
 /// `cross_tenant_unfederated`: ship an A2A token whose `iss` is a
 /// trust domain that the receiving identity service has never
 /// federated with (and never will — `attacker.local` is unique
