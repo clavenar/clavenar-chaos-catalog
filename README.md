@@ -20,13 +20,14 @@ use clavenar_chaos_catalog::{
     Attack,         // pure data; Clone+Debug. payload_builder and
                     // headers_builder are private — go through
                     // build_payload(request_id) and build_headers()
-    Category,       // 9 variants: Denylist, Injection, Velocity,
+    Category,       // 11 variants: Denylist, Injection, Velocity,
                     // BusinessHours, Control, Hil, Attestation, Identity,
-                    // SupplyChain
+                    // SupplyChain, AgentCert, MultiTurn
     Expected,       // Allow | Deny { reason_keywords } | BusinessHoursConditional
     Mode,           // Single | Burst { count } | SingleWithHil(HilSideAction)
+                    // | MultiTurn { primers }
     HilSideAction,  // Deny | DoNothing
-    catalog,        // -> Vec<Attack> (40 today)
+    catalog,        // -> Vec<Attack> (84 today)
 };
 ```
 
