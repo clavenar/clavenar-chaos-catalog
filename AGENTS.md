@@ -25,8 +25,10 @@ crates.io package. Run: library, no binary — exported via `catalog()`.
   - `catalog_policy_inputs() -> Vec<Value>` — each Rego-decidable attack
     projected to a policy-engine `PolicyInput` for an offline Rego-only
     backtest. Only `Denylist` / `BusinessHours` / `Control` survive the filter;
-    `Injection`/`SupplyChain` (need brain), `Hil` (live roundtrip), `Identity`
-    (identity layer), `Velocity`/`Attestation` (per-request state) return `None`.
+    the other 8 categories return `None`: `Injection`/`SupplyChain`/`MultiTurn`
+    (need brain), `Hil` (live roundtrip), `Identity` (identity layer),
+    `Velocity`/`Attestation` (per-request state), `AgentCert` (standing
+    controls spread across layers).
   - `Attack { id, category, description, expected, mode }` — `payload_builder` /
     `headers_builder` are private `fn` pointers; reach them via
     `build_payload(request_id)`, `build_headers()`, and `policy_input()`.
