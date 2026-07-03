@@ -15,7 +15,9 @@ cargo clippy --all-targets -- -D warnings
 cargo deny check all          # advisories / licenses / bans / sources
 ```
 Edition 2024. `publish = false` — workspace-internal data dependency, not a
-crates.io package. Run: library, no binary — exported via `catalog()`.
+crates.io package. Run: library, no binary — exported via `catalog()`. Host
+builds: this repo's `target/` may be root-owned from prior docker builds — pass
+`CARGO_TARGET_DIR=/tmp/clavenar-chaos-catalog-target` when building on the host.
 
 ## Layout
 - `src/lib.rs` — the whole crate: type defs, all per-scenario payload-builder
@@ -39,20 +41,26 @@ crates.io package. Run: library, no binary — exported via `catalog()`.
   - `Mode` — `Single` | `Burst { count }` | `SingleWithHil(HilSideAction)` | `MultiTurn { primers }`.
   - `HilSideAction` — `Deny` (POST `/decide` to drive the pending to Denied) | `DoNothing` (let the proxy poll-timeout fire).
 - `src/headers.rs` — private (`pub(crate)`) JOSE-shaped header builders for the
-  identity + attestation attacks. Tokens are UNSIGNED on purpose (the attacks
+  header-bearing attacks: identity, attestation, the agent-cert grant-replay,
+  and the expansion-domain denylist cases. Tokens are UNSIGNED on purpose (the attacks
   exercise rejection paths, not signature crypto); wall-clock claims
   (`expires_at`, `iat`, `exp`) are stamped at fire-time, not at catalog
   construction, so a long run never ships a stale claim.
-- `Cargo.toml` — deps: `serde_json`, `chrono`, `base64`. `deny.toml` — synced
-  verbatim from `clavenar-specs`; edit there first, then mirror. CI
-  (`.github/workflows/ci.yml`): `cargo check`/`test`/`clippy -D warnings` +
-  cargo-deny + a CycloneDX SBOM upload.
+- `Cargo.toml` — deps: `serde_json`, `chrono`, `base64`. `deny.toml` is synced
+  verbatim from `clavenar-specs` — edit it there first, then mirror the exact
+  bytes. CI (`.github/workflows/ci.yml`): `cargo check`/`test`/`clippy -D warnings`
+  + cargo-deny + a CycloneDX SBOM upload.
 
-Invariants: every payload is valid JSON-RPC except `agent_cert_malformed_mcp`
+## Conventions & invariants
+Every payload is valid JSON-RPC except `agent_cert_malformed_mcp`
 (intentionally missing `method`; the `payloads_are_valid_jsonrpc` test exempts
 it by id). Adding a scenario is non-breaking; renaming a `Category` / `Expected`
 / `Mode` variant is a breaking change that forces a coordinated bump on every
-consumer. Clippy `-D warnings` is the floor; tests stay in
+consumer. Attack `id`s are also load-bearing: `catalog_has_expected_attacks`
+pins ~20 ids and `payloads_are_valid_jsonrpc` exempts `agent_cert_malformed_mcp`
+by literal id; consumers key on ids too. Renaming an id is breaking.
+
+Rust house rules: clippy `-D warnings` is the floor; tests stay in
 `#[cfg(test)] mod tests` at file bottom.
 
 ## Pointers
