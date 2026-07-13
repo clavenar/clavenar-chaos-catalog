@@ -63,5 +63,7 @@ by literal id; consumers key on ids too. Renaming an id is breaking.
 Rust house rules: clippy `-D warnings` is the floor; tests stay in
 `#[cfg(test)] mod tests` at file bottom.
 
+- Commit subjects must start with a lowercase letter.
+
 ## Pointers
 README.md.
