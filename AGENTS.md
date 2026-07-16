@@ -33,10 +33,14 @@ builds: this repo's `target/` may be root-owned from prior docker builds — pas
     controls spread across layers).
   - `Attack { id, category, description, expected, mode }` — `payload_builder` /
     `headers_builder` are private `fn` pointers; reach them via
-    `build_payload(request_id)`, `build_headers()`, and `policy_input()`.
-  - `Category` — 11 variants (`Denylist`, `Injection`, `Velocity`,
+    `build_payload(request_id)`, `build_headers()`, `policy_input()`, and
+    `rejection_contract()`.
+  - `RejectionContract` — exact HTTP status, coarse proxy verdict, and
+    enforcement layer for every deny-capable attack. Transport/5xx results are
+    never contracts, and tests require every denial to have one.
+  - `Category` — 12 variants (`Denylist`, `Injection`, `Velocity`,
     `BusinessHours`, `Control`, `Hil`, `Attestation`, `Identity`, `SupplyChain`,
-    `AgentCert`, `MultiTurn`); wire string via `as_str()`.
+    `AgentCert`, `MultiTurn`, `Deception`); wire string via `as_str()`.
   - `Expected` — `Allow` | `Deny { reason_keywords }` | `BusinessHoursConditional { reason_keywords }`.
   - `Mode` — `Single` | `Burst { count }` | `SingleWithHil(HilSideAction)` | `MultiTurn { primers }`.
   - `HilSideAction` — `Deny` (POST `/decide` to drive the pending to Denied) | `DoNothing` (let the proxy poll-timeout fire).

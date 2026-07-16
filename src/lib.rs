@@ -43,10 +43,9 @@ pub enum Category {
     /// `stolen_svid_replay` (an SVID/actor token presented from an
     /// unexpected context), `expired_grant` (delegation grant past its
     /// `exp`), `cross_tenant_unfederated` (A→B token from a peer trust
-    /// domain we don't federate with). Each must produce a deny verdict
-    /// — exact reason varies by environment (e.g., `a2a_unavailable`
-    /// when the proxy isn't wired with identity, `peer_bundle_unknown`
-    /// when it is).
+    /// domain we don't federate with). Each must produce a 403 denial
+    /// from the identity layer. `a2a_unavailable` is an infrastructure
+    /// failure and must never satisfy these scenarios.
     Identity,
     /// clavenar-brain's two supply-chain signals
     /// (`malicious_code` + `compromised_package`). Both fire from the
@@ -131,6 +130,17 @@ pub enum Expected {
     },
 }
 
+/// Exact agent-facing rejection contract for an attack that is expected to
+/// be refused. Reason text remains on [`Expected`] because several policies
+/// deliberately provide more than one acceptable domain-specific reason;
+/// status, coarse verdict, and enforcement layer must match exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RejectionContract {
+    pub status: u16,
+    pub verdict: &'static str,
+    pub layer: &'static str,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Single,
@@ -191,6 +201,79 @@ impl Attack {
         match self.headers_builder {
             Some(b) => b(),
             None => Vec::new(),
+        }
+    }
+
+    /// Exact proxy rejection this scenario is allowed to count as a
+    /// security detection. This intentionally has no permissive fallback:
+    /// the catalog test fails when a new deny case lacks a real wire-layer
+    /// contract, and the runner fails that scenario rather than guessing.
+    pub fn rejection_contract(&self) -> Option<RejectionContract> {
+        if matches!(self.expected, Expected::Allow) {
+            return None;
+        }
+
+        match self.category {
+            Category::Control => None,
+            Category::Denylist
+            | Category::BusinessHours
+            | Category::Attestation
+            | Category::Deception
+            | Category::Velocity => Some(RejectionContract {
+                status: 403,
+                verdict: "denied",
+                layer: "policy",
+            }),
+            Category::Injection | Category::SupplyChain | Category::MultiTurn => {
+                Some(RejectionContract {
+                    status: 403,
+                    verdict: "denied",
+                    layer: "brain",
+                })
+            }
+            Category::Hil => match self.id {
+                "hil_denied" | "infra_apply_prod_rollout" | "plc_safety_device_review" => {
+                    Some(RejectionContract {
+                        status: 403,
+                        verdict: "review_denied",
+                        layer: "hil",
+                    })
+                }
+                "hil_expired" => Some(RejectionContract {
+                    status: 403,
+                    verdict: "review_expired",
+                    layer: "hil",
+                }),
+                _ => None,
+            },
+            Category::Identity => Some(RejectionContract {
+                status: 403,
+                verdict: "denied",
+                layer: "identity",
+            }),
+            Category::AgentCert => match self.id {
+                "agent_cert_malformed_mcp" => Some(RejectionContract {
+                    status: 400,
+                    verdict: "error",
+                    layer: "gateway",
+                }),
+                "agent_cert_poisoned_result" => Some(RejectionContract {
+                    status: 403,
+                    verdict: "denied",
+                    layer: "brain",
+                }),
+                "agent_cert_envelope_exceeded" => Some(RejectionContract {
+                    status: 403,
+                    verdict: "denied",
+                    layer: "policy",
+                }),
+                "agent_cert_grant_replay" => Some(RejectionContract {
+                    status: 403,
+                    verdict: "denied",
+                    layer: "identity",
+                }),
+                _ => None,
+            },
         }
     }
 
@@ -1570,28 +1653,19 @@ pub fn catalog() -> Vec<Attack> {
         // before `velocity_breaker` (which burns the agent's per-60s
         // budget) for the same reason the HIL/attestation attacks do.
         //
-        // Expected reasons accept BOTH environments:
-        //   * Wired (identity URL + caller SPIFFE configured on the proxy):
-        //     specific reason from identity (`jti_already_used`,
-        //     `peer_bundle_unknown`, `peer_bundle_stale`) surfaces as
-        //     `a2a_redeem_failed:<inner>`.
-        //   * Unwired (the default e2e setup today): proxy returns 503
-        //     `a2a_unavailable` because no identity URL is configured.
-        // Either response is "the proxy refused to forward," which is
-        // what the §10 threat model demands.
+        // These require the wired identity path. A specific identity
+        // rejection (`jti_already_used`, `peer_bundle_unknown`,
+        // `peer_bundle_stale`) surfaces inside the proxy's structured 403
+        // `a2a_redeem_failed` envelope. An unwired/unreachable identity
+        // service produces a 503 `a2a_unavailable` infrastructure result
+        // and is an assurance failure, never a security detection.
         Attack {
             id: "stolen_svid_replay",
             category: Category::Identity,
             description: "Hand-crafted x-clavenar-actor-token (a 'stolen' inbound A2A token) must \
-                 be rejected — either by /actor-token/redeem in the wired path or by \
-                 the fail-closed a2a_unavailable response in the unwired path.",
+                 be rejected by /actor-token/redeem through the wired identity path.",
             expected: Expected::Deny {
-                reason_keywords: vec![
-                    "a2a_unavailable",
-                    "a2a_redeem_failed",
-                    "jti_already_used",
-                    "expired",
-                ],
+                reason_keywords: vec!["a2a_redeem_failed", "jti_already_used", "expired"],
             },
             mode: Mode::Single,
             payload_builder: ping_allow,
@@ -1614,11 +1688,10 @@ pub fn catalog() -> Vec<Attack> {
             id: "cross_tenant_unfederated",
             category: Category::Identity,
             description: "x-clavenar-actor-token whose iss is a trust domain we do NOT federate \
-                 with. /actor-token/redeem rejects with peer_bundle_unknown when wired; \
-                 the proxy returns 503 a2a_unavailable when not.",
+                 with. The wired /actor-token/redeem path must reject it with \
+                 peer_bundle_unknown or peer_bundle_stale.",
             expected: Expected::Deny {
                 reason_keywords: vec![
-                    "a2a_unavailable",
                     "a2a_redeem_failed",
                     "peer_bundle_unknown",
                     "peer_bundle_stale",
@@ -2500,6 +2573,43 @@ pub fn catalog() -> Vec<Attack> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_denial_has_an_exact_rejection_contract() {
+        for attack in catalog() {
+            match attack.expected {
+                Expected::Allow => assert_eq!(attack.rejection_contract(), None),
+                Expected::Deny { .. } | Expected::BusinessHoursConditional { .. } => {
+                    let contract = attack
+                        .rejection_contract()
+                        .unwrap_or_else(|| panic!("{} is missing a rejection contract", attack.id));
+                    assert!(
+                        matches!(contract.status, 400 | 403),
+                        "{} uses unexpected security status {}",
+                        attack.id,
+                        contract.status
+                    );
+                    assert!(!contract.verdict.is_empty());
+                    assert!(!contract.layer.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn infrastructure_identity_responses_are_not_expected_denials() {
+        for id in ["stolen_svid_replay", "cross_tenant_unfederated"] {
+            let attack = catalog().into_iter().find(|a| a.id == id).unwrap();
+            assert_eq!(
+                attack.rejection_contract(),
+                Some(RejectionContract {
+                    status: 403,
+                    verdict: "denied",
+                    layer: "identity",
+                })
+            );
+        }
+    }
 
     #[test]
     fn policy_inputs_cover_only_rego_decidable_attacks() {

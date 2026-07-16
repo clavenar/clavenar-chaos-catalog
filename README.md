@@ -20,14 +20,15 @@ use clavenar_chaos_catalog::{
     Attack,         // pure data; Clone+Debug. payload_builder and
                     // headers_builder are private — go through
                     // build_payload(request_id) and build_headers()
-    Category,       // 11 variants: Denylist, Injection, Velocity,
+    Category,       // 12 variants: Denylist, Injection, Velocity,
                     // BusinessHours, Control, Hil, Attestation, Identity,
-                    // SupplyChain, AgentCert, MultiTurn
+                    // SupplyChain, AgentCert, MultiTurn, Deception
     Expected,       // Allow | Deny { reason_keywords } | BusinessHoursConditional
+    RejectionContract, // exact status + proxy verdict + enforcement layer
     Mode,           // Single | Burst { count } | SingleWithHil(HilSideAction)
                     // | MultiTurn { primers }
     HilSideAction,  // Deny | DoNothing
-    catalog,        // -> Vec<Attack> (84 today)
+    catalog,        // -> Vec<Attack> (86 today)
 };
 ```
 
@@ -36,6 +37,12 @@ state). Time-dependent values (attestation `expires_at`, JWT `exp`)
 are stamped at fire-time by the `build_headers()` accessor rather
 than at catalog construction, so a long catalog run doesn't ship
 stale claims.
+
+Every deny-capable attack also exposes `rejection_contract()`. The runner must
+match its status, coarse proxy verdict, and layer exactly in addition to the
+scenario's reason fragments and correlation id. The identity threats require a
+wired 403 identity-layer denial; a 5xx `a2a_unavailable` response is an
+infrastructure failure, never a successful detection.
 
 ## What's NOT in here
 
