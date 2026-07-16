@@ -42,7 +42,9 @@ Every deny-capable attack also exposes `rejection_contract()`. The runner must
 match its status, coarse proxy verdict, and layer exactly in addition to the
 scenario's reason fragments and correlation id. The identity threats require a
 wired 403 identity-layer denial; a 5xx `a2a_unavailable` response is an
-infrastructure failure, never a successful detection.
+infrastructure failure, never a successful detection. A contract names the
+first live rejecting layer, not merely the scenario category: destructive
+denylist payloads that trigger Brain before Rego therefore declare `brain`.
 
 ## What's NOT in here
 

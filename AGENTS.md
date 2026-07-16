@@ -37,7 +37,9 @@ builds: this repo's `target/` may be root-owned from prior docker builds — pas
     `rejection_contract()`.
   - `RejectionContract` — exact HTTP status, coarse proxy verdict, and
     enforcement layer for every deny-capable attack. Transport/5xx results are
-    never contracts, and tests require every denial to have one.
+    never contracts, and tests require every denial to have one. The layer is
+    the first live rejecting layer: destructive denylist shapes may contract
+    on `brain` because Brain evaluates before Rego.
   - `Category` — 12 variants (`Denylist`, `Injection`, `Velocity`,
     `BusinessHours`, `Control`, `Hil`, `Attestation`, `Identity`, `SupplyChain`,
     `AgentCert`, `MultiTurn`, `Deception`); wire string via `as_str()`.

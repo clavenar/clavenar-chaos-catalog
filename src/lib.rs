@@ -215,8 +215,20 @@ impl Attack {
 
         match self.category {
             Category::Control => None,
-            Category::Denylist
-            | Category::BusinessHours
+            Category::Denylist => Some(RejectionContract {
+                status: 403,
+                verdict: "denied",
+                // These payloads are both policy violations and destructive
+                // command shapes. The proxy evaluates Brain before Rego, so
+                // the live enforcement contract is the first rejecting layer.
+                layer: match self.id {
+                    "biotech_gxp_audit_delete"
+                    | "capmkts_cat_modify"
+                    | "legal_attorney_log_delete" => "brain",
+                    _ => "policy",
+                },
+            }),
+            Category::BusinessHours
             | Category::Attestation
             | Category::Deception
             | Category::Velocity => Some(RejectionContract {
@@ -2607,6 +2619,26 @@ mod tests {
                     verdict: "denied",
                     layer: "identity",
                 })
+            );
+        }
+    }
+
+    #[test]
+    fn destructive_denylist_contracts_name_the_first_rejecting_layer() {
+        for id in [
+            "biotech_gxp_audit_delete",
+            "capmkts_cat_modify",
+            "legal_attorney_log_delete",
+        ] {
+            let attack = catalog().into_iter().find(|a| a.id == id).unwrap();
+            assert_eq!(
+                attack.rejection_contract(),
+                Some(RejectionContract {
+                    status: 403,
+                    verdict: "denied",
+                    layer: "brain",
+                }),
+                "{id} must describe the proxy's Brain-before-policy ordering"
             );
         }
     }
