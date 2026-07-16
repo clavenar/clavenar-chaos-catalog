@@ -54,10 +54,10 @@ pub(crate) fn absent_attestation_header() -> Vec<(&'static str, String)> {
 /// the signature in v1, so a placeholder sig is enough to drive the
 /// rejection path.
 pub(crate) fn craft_unsigned_jwt(claims: &serde_json::Value) -> String {
-    let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(br#"{"alg":"EdDSA","typ":"JWT"}"#);
-    let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(claims.to_string().as_bytes());
+    let header_b64 =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"alg":"EdDSA","typ":"JWT"}"#);
+    let payload_b64 =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims.to_string().as_bytes());
     let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b"chaos-fake-sig");
     format!("{header_b64}.{payload_b64}.{sig_b64}")
 }

@@ -52,6 +52,9 @@ builds: this repo's `target/` may be root-owned from prior docker builds — pas
   + cargo-deny + a CycloneDX SBOM upload.
 
 ## Conventions & invariants
+
+- **Formatting is an owning-CI gate.** Run `cargo fmt --all -- --check`
+  before pushing Rust changes; CI runs it before check, test, and clippy.
 - After adding or updating a feature, also update the relevant `MANUAL_TESTS*` file(s) when needed.
 Every payload is valid JSON-RPC except `agent_cert_malformed_mcp`
 (intentionally missing `method`; the `payloads_are_valid_jsonrpc` test exempts
