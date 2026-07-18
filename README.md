@@ -33,10 +33,10 @@ use clavenar_chaos_catalog::{
 ```
 
 Every payload + header builder is a plain `fn` pointer (no captured
-state). Time-dependent values (attestation `expires_at`, JWT `exp`)
-are stamped at fire-time by the `build_headers()` accessor rather
-than at catalog construction, so a long catalog run doesn't ship
-stale claims.
+state). Time-dependent identity-token values are stamped at fire-time by the
+`build_headers()` accessor rather than at catalog construction, so a long
+catalog run doesn't ship stale claims. Attestation coverage uses only a
+deny-only absent marker; the catalog never synthesizes attestation claims.
 
 Every deny-capable attack also exposes `rejection_contract()`. The runner must
 match its status, coarse proxy verdict, and layer exactly in addition to the

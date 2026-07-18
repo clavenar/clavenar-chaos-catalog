@@ -1,47 +1,24 @@
-//! JOSE-shaped header builders for the identity + attestation attacks.
+//! Header builders for identity and deny-only attestation attacks.
 //!
-//! The proxy / identity-service decode these headers but don't verify
-//! signatures in v1, so the catalog ships UNSIGNED tokens on purpose —
-//! the attacks exercise rejection paths (expired grant, unknown peer
-//! bundle, non-allowlisted measurement, etc.), not signature crypto.
+//! The identity-oriented builders ship adversarial tokens on purpose so the
+//! attacks exercise rejection paths (expired grant, unknown peer bundle,
+//! etc.). Attestation negative coverage uses only a one-way absent marker;
+//! callers cannot inject attestation claims.
 //!
 //! Each builder is called once per fire so wall-clock claims
-//! (`expires_at`, `iat`, `exp`) reflect the time of firing rather than
-//! the time the catalog was constructed — a long catalog run otherwise
-//! ships stale freshness claims that get rejected for the wrong reason.
+//! (`iat`, `exp`) reflect the time of firing rather than the time the catalog
+//! was constructed — a long catalog run otherwise ships stale freshness
+//! claims that get rejected for the wrong reason.
 
 use base64::Engine as _;
 use serde_json::json;
-
-/// Build the `X-Clavenar-Attestation` header value the
-/// `unattested_binary` attack ships. Stamps `issued_at`/`expires_at`
-/// at fire-time so the rego freshness check (`expires_at > ns_now`)
-/// passes — the attack proves the *measurement* is rejected, not
-/// that the claim is stale. The measurement string is deliberately
-/// not in `policies/attestation_allowlist.json` for any tool, and
-/// is unique enough that the deny reason can be grep'd back to this
-/// attack on a chain audit.
-pub(crate) fn rogue_attestation_header() -> Vec<(&'static str, String)> {
-    let now = chrono::Utc::now();
-    let claims = json!({
-        "kind": "dev-mock",
-        "measurement": "rogue-binary-deadbeef",
-        "issued_at": now.to_rfc3339(),
-        "expires_at": (now + chrono::Duration::minutes(5)).to_rfc3339(),
-        "nonce_echo": "chaos-monkey-rogue",
-    });
-    let json = serde_json::to_string(&claims).expect("rogue claim serializes");
-    let encoded = base64::engine::general_purpose::STANDARD.encode(json.as_bytes());
-    vec![("x-clavenar-attestation", encoded)]
-}
 
 /// The four template-deny `*_unattested` scenarios
 /// (`phi_egress_unattested`, `iam_grant_unattested_deny`,
 /// `transcript_bulk_unattested`, `cross_agent_impersonation`) need the
 /// proxy to present `input.attestation = null` so the template's
 /// unattested hard-deny fires. The dev proxy auto-attests every SVID via
-/// its attestation cache, so an absent `x-clavenar-attestation` header is
-/// not enough — this explicit marker forces the proxy's
+/// its attestation cache, so this explicit marker forces the proxy's
 /// `resolve_attestation` to `None`. It can only tighten the verdict,
 /// never bypass.
 pub(crate) fn absent_attestation_header() -> Vec<(&'static str, String)> {

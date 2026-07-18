@@ -14,9 +14,9 @@
 //!
 //! Everything in this crate is plain data: `Copy`/`Clone`/`Debug`-shaped
 //! structs and `fn` (not `Fn`) function pointers. There's no async, no
-//! HTTP client, no NATS handle. Time-dependent header values (e.g. the
-//! attestation `expires_at` claim) are stamped at fire-time by the
-//! `headers_builder` `fn`, not at catalog construction.
+//! HTTP client, no NATS handle. Time-dependent identity-token values are
+//! stamped at fire-time by the `headers_builder` `fn`, not at catalog
+//! construction.
 
 mod headers;
 
@@ -34,10 +34,9 @@ pub enum Category {
     /// chaos runner pairs each HIL attack with a side task that
     /// drives the pending record to a known terminal state.
     Hil,
-    /// agent presents a fresh attestation whose measurement
-    /// is NOT in the `attestation_allowlist.json` for the requested
-    /// tool. The policy engine's `attestation_required` deny rule
-    /// fires with "agent measurement … not in allowlist".
+    /// Agent presents no attestation for a tool that requires one. The policy
+    /// engine's `attestation_required` deny rule fires with the stable
+    /// `attestation_stale` reason.
     Attestation,
     /// clavenar-specs/TECH_SPEC.md#identity-service §10: identity-layer threats. Three scenarios:
     /// `stolen_svid_replay` (an SVID/actor token presented from an
@@ -175,11 +174,10 @@ pub struct Attack {
     // `fn` (not `Fn`) so Attack stays plain `Clone+Debug` — no captured
     // state, no trait-object indirection.
     payload_builder: fn(u64) -> Value,
-    /// Optional builder for extra HTTP headers. Called per fire so
-    /// wall-clock claims (`X-Clavenar-Attestation`'s `expires_at`,
-    /// actor-token `iat`/`exp`) reflect the time of firing — a long
-    /// catalog run otherwise ships stale claims that get rejected for
-    /// the wrong reason. Private so consumers go through
+    /// Optional builder for extra HTTP headers. Called per fire so identity
+    /// token `iat`/`exp` values reflect the time of firing — a long catalog run
+    /// otherwise ships stale claims that get rejected for the wrong reason.
+    /// Private so consumers go through
     /// `build_headers()`, matching `payload_builder` / `build_payload`.
     #[allow(clippy::type_complexity)]
     headers_builder: Option<fn() -> Vec<(&'static str, String)>>,
@@ -193,10 +191,8 @@ impl Attack {
     }
 
     /// Returns the headers this attack wants attached on each fire,
-    /// or an empty vector if none. Called once per request — for
-    /// attestation, this means `issued_at` / `expires_at` are stamped
-    /// at fire-time, so a long catalog run doesn't ship a stale claim
-    /// to the proxy.
+    /// or an empty vector if none. Called once per request so time-bound
+    /// identity-token attacks do not reuse stale claims.
     pub fn build_headers(&self) -> Vec<(&'static str, String)> {
         match self.headers_builder {
             Some(b) => b(),
@@ -1642,14 +1638,14 @@ pub fn catalog() -> Vec<Attack> {
         Attack {
             id: "unattested_binary",
             category: Category::Attestation,
-            description: "Wire-transfer with a non-allowlisted measurement should hit the rego \
-                 attestation_required deny rule (\"agent measurement … not in allowlist\").",
+            description: "Wire-transfer without an attestation should hit the rego \
+                 attestation_required deny rule (attestation_stale).",
             expected: Expected::Deny {
-                reason_keywords: vec!["not in allowlist", "rogue-binary-deadbeef"],
+                reason_keywords: vec!["attestation_stale"],
             },
             mode: Mode::Single,
             payload_builder: wire_transfer,
-            headers_builder: Some(headers::rogue_attestation_header),
+            headers_builder: Some(headers::absent_attestation_header),
         },
         Attack {
             id: "control_allow",
@@ -2923,13 +2919,7 @@ mod tests {
     }
 
     #[test]
-    fn unattested_binary_attaches_attestation_header_with_rogue_measurement() {
-        // Bake the wire format the proxy expects: a base64-encoded
-        // JSON `AttestationClaims` whose `measurement` is the
-        // catalog's rogue value. The proxy's `parse_header` decodes
-        // and forwards to PolicyInput; the rego rule then denies on
-        // "not in allowlist".
-        use base64::Engine as _;
+    fn unattested_binary_uses_only_the_deny_only_absent_marker() {
         let a = catalog()
             .into_iter()
             .find(|a| a.id == "unattested_binary")
@@ -2937,21 +2927,13 @@ mod tests {
         let headers = a.build_headers();
         assert_eq!(headers.len(), 1);
         let (name, value) = &headers[0];
-        assert_eq!(*name, "x-clavenar-attestation");
-
-        let json_bytes = base64::engine::general_purpose::STANDARD
-            .decode(value)
-            .expect("header value must be valid base64");
-        let claim: serde_json::Value =
-            serde_json::from_slice(&json_bytes).expect("decoded payload must be valid JSON");
-        assert_eq!(claim["measurement"], "rogue-binary-deadbeef");
-        assert_eq!(claim["kind"], "dev-mock");
-        // Freshness fields must be present so the rego freshness
-        // check (`fresh_attestation`) passes — the attack must prove
-        // the measurement is rejected on its own merit, not because
-        // the claim is stale.
-        assert!(claim["issued_at"].is_string());
-        assert!(claim["expires_at"].is_string());
+        assert_eq!(*name, "x-clavenar-attestation-absent");
+        assert_eq!(value, "1");
+        assert!(
+            !headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("x-clavenar-attestation"))
+        );
     }
 
     /// Header-attaching attacks pinned in one place, used as the
