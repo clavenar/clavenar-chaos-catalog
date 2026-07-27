@@ -2,6 +2,7 @@
 name = "clavenar-chaos-catalog"
 version = "0.1.0"
 edition = "2024"
+authors = ["Vanteguard Labs <vanteguardlabs@gmail.com>"]
 description = "Pure-data attack catalog for Clavenar's red-team and demo flows. Lifted from clavenar-chaos-monkey so clavenar-chaos-monkey, clavenar-console (/demo/fire), and any future caller can fire the same scenarios from one canonical source."
 license = "Apache-2.0"
 repository = "https://github.com/clavenar/clavenar-chaos-catalog"
