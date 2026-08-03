@@ -35,8 +35,9 @@ pub enum Category {
     /// drives the pending record to a known terminal state.
     Hil,
     /// Agent presents no attestation for a tool that requires one. The policy
-    /// engine's `attestation_required` deny rule fires with the stable
-    /// `attestation_stale` reason.
+    /// engine's exact-current verifier gate fires with the stable
+    /// `attestation_invalid` reason when evidence is missing, stale, or
+    /// mismatched.
     Attestation,
     /// clavenar-specs/TECH_SPEC.md#identity-service §10: identity-layer threats. Three scenarios:
     /// `stolen_svid_replay` (an SVID/actor token presented from an
@@ -1639,9 +1640,9 @@ pub fn catalog() -> Vec<Attack> {
             id: "unattested_binary",
             category: Category::Attestation,
             description: "Wire-transfer without an attestation should hit the rego \
-                 attestation_required deny rule (attestation_stale).",
+                 exact-current verifier deny rule (attestation_invalid).",
             expected: Expected::Deny {
-                reason_keywords: vec!["attestation_stale"],
+                reason_keywords: vec!["attestation_invalid"],
             },
             mode: Mode::Single,
             payload_builder: wire_transfer,
@@ -2916,6 +2917,12 @@ mod tests {
             .unwrap();
         let v = a.build_payload(1);
         assert_eq!(v["params"]["name"], "wire_transfer");
+        match a.expected {
+            Expected::Deny { reason_keywords } => {
+                assert_eq!(reason_keywords, vec!["attestation_invalid"]);
+            }
+            _ => panic!("unattested_binary must remain deny-expected"),
+        }
     }
 
     #[test]
