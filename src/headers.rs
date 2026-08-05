@@ -39,13 +39,11 @@ pub(crate) fn craft_unsigned_jwt(claims: &serde_json::Value) -> String {
     format!("{header_b64}.{payload_b64}.{sig_b64}")
 }
 
-/// `stolen_svid_replay`: ship an inbound A2A token that *looks* valid
-/// (claims past validity, still-fresh exp) but uses a `jti` shaped to
-/// look like a previously-redeemed one. Whether it gets rejected on
-/// jti_already_used (wired path with a peer that's already redeemed
-/// this jti) or on a2a_unavailable (unwired path) is environment-
-/// dependent; both satisfy the threat model.
-pub(crate) fn stolen_actor_token_header() -> Vec<(&'static str, String)> {
+/// `invalid_actor_token`: ship a structurally JWT-shaped but unsigned inbound
+/// A2A token. This deliberately tests authentication rejection only; genuine
+/// replay coverage requires minting and successfully redeeming an authorized
+/// token before presenting the exact same JTI a second time.
+pub(crate) fn invalid_actor_token_header() -> Vec<(&'static str, String)> {
     let now = chrono::Utc::now().timestamp();
     let claims = json!({
         "iss": "spiffe://clavenar.local",
@@ -55,12 +53,7 @@ pub(crate) fn stolen_actor_token_header() -> Vec<(&'static str, String)> {
         "iat": now,
         // 30s ahead — fresh enough that the rejection isn't on `expired`.
         "exp": now + 30,
-        // Fixed jti so a follow-up replay against a wired identity
-        // can hit the jti_already_used path on the second fire. The
-        // chaos catalog runs single-shot today, so we get a2a_unavailable
-        // (unwired) or peer_bundle_unknown (wired with no federated
-        // peer named clavenar.local).
-        "jti": "chaos-stolen-svid-fixed-jti",
+        "jti": "chaos-invalid-actor-token",
     });
     vec![("x-clavenar-actor-token", craft_unsigned_jwt(&claims))]
 }

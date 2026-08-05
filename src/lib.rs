@@ -40,7 +40,7 @@ pub enum Category {
     /// mismatched.
     Attestation,
     /// clavenar-specs/TECH_SPEC.md#identity-service §10: identity-layer threats. Three scenarios:
-    /// `stolen_svid_replay` (an SVID/actor token presented from an
+    /// `invalid_actor_token` (an unsigned actor token presented from an
     /// unexpected context), `expired_grant` (delegation grant past its
     /// `exp`), `cross_tenant_unfederated` (A→B token from a peer trust
     /// domain we don't federate with). Each must produce a 403 denial
@@ -1663,22 +1663,22 @@ pub fn catalog() -> Vec<Attack> {
         // budget) for the same reason the HIL/attestation attacks do.
         //
         // These require the wired identity path. A specific identity
-        // rejection (`jti_already_used`, `peer_bundle_unknown`,
+        // rejection (`invalid_token`, `peer_bundle_unknown`,
         // `peer_bundle_stale`) surfaces inside the proxy's structured 403
         // `a2a_redeem_failed` envelope. An unwired/unreachable identity
         // service produces a 503 `a2a_unavailable` infrastructure result
         // and is an assurance failure, never a security detection.
         Attack {
-            id: "stolen_svid_replay",
+            id: "invalid_actor_token",
             category: Category::Identity,
-            description: "Hand-crafted x-clavenar-actor-token (a 'stolen' inbound A2A token) must \
-                 be rejected by /actor-token/redeem through the wired identity path.",
+            description: "Hand-crafted unsigned x-clavenar-actor-token must be rejected by \
+                 /actor-token/redeem through the wired identity path.",
             expected: Expected::Deny {
-                reason_keywords: vec!["a2a_redeem_failed", "jti_already_used", "expired"],
+                reason_keywords: vec!["a2a_redeem_failed", "invalid_token", "malformed_token"],
             },
             mode: Mode::Single,
             payload_builder: ping_allow,
-            headers_builder: Some(headers::stolen_actor_token_header),
+            headers_builder: Some(headers::invalid_actor_token_header),
         },
         Attack {
             id: "expired_grant",
@@ -1714,10 +1714,10 @@ pub fn catalog() -> Vec<Attack> {
         // Agent pre-flight certification family. Fired by
         // `clavenarctl agents certify` as the candidate's own mTLS
         // traffic; each probes a STANDING control so the verdict does not
-        // depend on install-on-demand policy templates. Reason keywords
-        // are nominal — the certify command passes a case on ANY deny and
-        // records the observed reason, so gate ordering can't flip a
-        // genuine denial into a certification failure.
+        // depend on install-on-demand policy templates. The certify command
+        // requires the exact status, verdict, layer, reason fragment, and
+        // RFC 4122 UUIDv5 correlation contract; an unrelated rejection can
+        // never impersonate the standing control being certified.
         // ====================================================================
         Attack {
             id: "agent_cert_malformed_mcp",
@@ -2607,7 +2607,7 @@ mod tests {
 
     #[test]
     fn infrastructure_identity_responses_are_not_expected_denials() {
-        for id in ["stolen_svid_replay", "cross_tenant_unfederated"] {
+        for id in ["invalid_actor_token", "cross_tenant_unfederated"] {
             let attack = catalog().into_iter().find(|a| a.id == id).unwrap();
             assert_eq!(
                 attack.rejection_contract(),
@@ -2700,7 +2700,7 @@ mod tests {
             "hil_denied",
             "hil_expired",
             "unattested_binary",
-            "stolen_svid_replay",
+            "invalid_actor_token",
             "expired_grant",
             "cross_tenant_unfederated",
             "malicious_code_reverse_shell",
@@ -2739,10 +2739,10 @@ mod tests {
     }
 
     #[test]
-    fn stolen_svid_replay_attaches_actor_token_header() {
+    fn invalid_actor_token_attaches_actor_token_header() {
         let a = catalog()
             .into_iter()
-            .find(|a| a.id == "stolen_svid_replay")
+            .find(|a| a.id == "invalid_actor_token")
             .unwrap();
         let headers = a.build_headers();
         assert_eq!(headers.len(), 1);
@@ -2948,7 +2948,7 @@ mod tests {
     /// and the positive exhaustiveness test below.
     const HEADER_CARRIERS: &[&str] = &[
         "unattested_binary",
-        "stolen_svid_replay",
+        "invalid_actor_token",
         "expired_grant",
         "cross_tenant_unfederated",
         // The template-deny `*_unattested` scenarios ship the
