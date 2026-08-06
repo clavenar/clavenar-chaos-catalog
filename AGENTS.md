@@ -23,7 +23,9 @@ builds: this repo's `target/` may be root-owned from prior docker builds — pas
 - `src/lib.rs` — the whole crate: type defs, all per-scenario payload-builder
   `fn`s, the `catalog()` / `catalog_policy_inputs()` entry points, and the
   `#[cfg(test)] mod tests` at file bottom. Exported surface:
-  - `catalog() -> Vec<Attack>` — the canonical scenario list (84+ attacks).
+  - `catalog() -> Vec<Attack>` — the canonical, test-pinned scenario list; use
+    `clavenar-chaos-monkey --list` for the live inventory rather than copying a
+    volatile count into documentation.
   - `catalog_policy_inputs() -> Vec<Value>` — each Rego-decidable attack
     projected to a policy-engine `PolicyInput` for an offline Rego-only
     backtest. Only `Denylist` / `BusinessHours` / `Control` survive the filter;
@@ -61,7 +63,6 @@ builds: this repo's `target/` may be root-owned from prior docker builds — pas
 
 - **Formatting is an owning-CI gate.** Run `cargo fmt --all -- --check`
   before pushing Rust changes; CI runs it before check, test, and clippy.
-- After adding or updating a feature, also update the relevant `MANUAL_TESTS*` file(s) when needed.
 Every payload is valid JSON-RPC except `agent_cert_malformed_mcp`
 (intentionally missing `method`; the `payloads_are_valid_jsonrpc` test exempts
 it by id). Adding a scenario is non-breaking; renaming a `Category` / `Expected`
